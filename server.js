@@ -3,6 +3,8 @@ require("dotenv").config();
 const express = require("express");
 const connectDB = require("./db");
 const Post = require("./models/Post");
+const authRoutes = require("./routes/auth");
+const auth = require("./middleware/auth");
 const {
   validatePost,
   validatePostUpdate,
@@ -18,10 +20,12 @@ app.use(express.urlencoded({ extended: true })); // Parse form data
 // Hardcoded data (top of file, after middleware)
 const posts = [];
 
-// GET all posts
+app.use("/api/auth", authRoutes);
 
+// GET all posts
 app.post(
   "/api/posts",
+  auth,
   validatePost,
   handleValidationErrors,
   async (req, res) => {
