@@ -3,6 +3,12 @@ require("dotenv").config();
 const express = require("express");
 const connectDB = require("./db");
 const Post = require("./models/Post");
+const {
+  validatePost,
+  validatePostUpdate,
+  handleValidationErrors,
+} = require("./middleware/validation");
+
 const app = express();
 
 // ADD THESE 2 LINES (after app = express())
@@ -11,6 +17,36 @@ app.use(express.urlencoded({ extended: true })); // Parse form data
 
 // Hardcoded data (top of file, after middleware)
 const posts = [];
+
+// GET all posts
+
+app.post(
+  "/api/posts",
+  validatePost,
+  handleValidationErrors,
+  async (req, res) => {
+    console.log("POST route hit!"); // LOG 1
+    console.log("Body:", req.body); // LOG 2
+    try {
+      const { title, author, content } = req.body;
+      console.log("Creating post..."); // LOG 3
+
+      // No need for manual validation anymore!
+      // Middleware already checked
+
+      const newPost = await Post.create({ title, author, content });
+      console.log("Post created:", newPost); // LOG 4
+
+      res.status(201).json({
+        message: "Post created successfully",
+        post: newPost,
+      });
+    } catch (error) {
+      res.status(500).json({ error: "Server error", details: error.message });
+      console.log("Error:", error); // LOG 5
+    }
+  }
+);
 
 // GET all posts
 app.get("/api/posts", async (req, res) => {
@@ -42,42 +78,36 @@ app.get("/api/posts/:id", async (req, res) => {
 });
 
 // Update Post
-app.put("/api/posts/:id", async (req, res) => {
-  try {
-    const { title, author, content } = req.body;
+app.put(
+  "/api/posts/:id",
+  validatePostUpdate,
+  handleValidationErrors,
+  async (req, res) => {
+    try {
+      const { title, author, content } = req.body;
 
-    // Validation
-    if (!title && !author && !content) {
-      return res.status(400).json({
-        error: "At least one field required to update",
-      });
+      // Build update object
+      const updateData = {};
+      if (title) updateData.title = title;
+      if (author) updateData.author = author;
+      if (content) updateData.content = content;
+
+      const updatedPost = await Post.findByIdAndUpdate(
+        req.params.id,
+        updateData,
+        { new: true, runValidators: true } // ADD runValidators!
+      );
+
+      if (!updatedPost) {
+        return res.status(404).json({ error: "Post not found" });
+      }
+
+      res.json({ message: "Post updated successfully", post: updatedPost });
+    } catch (error) {
+      res.status(500).json({ error: "Server error", details: error.message });
     }
-
-    // Build update object (only fields provided)
-    const updateData = {};
-    if (title) updateData.title = title;
-    if (author) updateData.author = author;
-    if (content) updateData.content = content;
-
-    // Update in database
-    const updatedPost = await Post.findByIdAndUpdate(
-      req.params.id,
-      updateData,
-      { new: true } // Return updated document
-    );
-
-    if (!updatedPost) {
-      return res.status(404).json({ error: "Post not found" });
-    }
-
-    res.json({
-      message: "Post updated successfully",
-      post: updatedPost,
-    });
-  } catch (error) {
-    res.status(500).json({ error: "Server error", details: error.message });
   }
-});
+);
 
 // Delete
 app.delete("/api/posts/:id", async (req, res) => {
