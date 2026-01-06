@@ -47,6 +47,12 @@ const postSchema = new mongoose.Schema(
       minlength: [10, "Content must be at least 10 characters"],
       maxlength: [5000, "Content cannot exceed 5000 characters"],
     },
+    user: {
+      // ADD THIS FIELD
+      type: mongoose.Schema.Types.ObjectId, // Reference to User model
+      ref: "User", // Model name
+      required: [true, "User is required"],
+    },
   },
   {
     timestamps: true,

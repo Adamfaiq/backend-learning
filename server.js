@@ -38,7 +38,12 @@ app.post(
       // No need for manual validation anymore!
       // Middleware already checked
 
-      const newPost = await Post.create({ title, author, content });
+      const newPost = await Post.create({
+        title,
+        author,
+        content,
+        user: req.userId,
+      });
       console.log("Post created:", newPost); // LOG 4
 
       res.status(201).json({
@@ -53,9 +58,25 @@ app.post(
 );
 
 // GET all posts
+// Get logged-in user's posts only
+app.get("/api/posts/my/posts", auth, async (req, res) => {
+  try {
+    const posts = await Post.find({ user: req.userId })
+      .populate("user", "username email")
+      .sort({ createdAt: -1 });
+
+    res.json({
+      count: posts.length,
+      posts: posts,
+    });
+  } catch (error) {
+    res.status(500).json({ error: "Server error", details: error.message });
+  }
+});
+
 app.get("/api/posts", async (req, res) => {
   try {
-    const posts = await Post.find();
+    const posts = await Post.find().populate("user", "username email"); // ADD THIS - populate user data
 
     res.json({
       count: posts.length,
@@ -69,7 +90,10 @@ app.get("/api/posts", async (req, res) => {
 // Single Post - Id
 app.get("/api/posts/:id", async (req, res) => {
   try {
-    const post = await Post.findById(req.params.id);
+    const post = await Post.findById(req.params.id).populate(
+      "user",
+      "username email"
+    ); // ADD THIS
 
     if (!post) {
       return res.status(404).json({ error: "Post not found" });
@@ -84,11 +108,26 @@ app.get("/api/posts/:id", async (req, res) => {
 // Update Post
 app.put(
   "/api/posts/:id",
+  auth,
   validatePostUpdate,
   handleValidationErrors,
   async (req, res) => {
     try {
       const { title, author, content } = req.body;
+
+      // Find post
+      const post = await Post.findById(req.params.id);
+
+      if (!post) {
+        return res.status(404).json({ error: "Post not found" });
+      }
+
+      // Check ownership - IMPORTANT!
+      if (post.user.toString() !== req.userId) {
+        return res.status(403).json({
+          error: "Forbidden: You can only edit your own posts",
+        });
+      }
 
       // Build update object
       const updateData = {};
@@ -114,8 +153,21 @@ app.put(
 );
 
 // Delete
-app.delete("/api/posts/:id", async (req, res) => {
+app.delete("/api/posts/:id", auth, async (req, res) => {
   try {
+    // Find post
+    const post = await Post.findById(req.params.id);
+
+    if (!post) {
+      return res.status(404).json({ error: "Post not found" });
+    }
+
+    // Check ownership
+    if (post.user.toString() !== req.userId) {
+      return res.status(403).json({
+        error: "Forbidden: You can only delete your own posts",
+      });
+    }
     const deletedPost = await Post.findByIdAndDelete(req.params.id);
 
     if (!deletedPost) {
