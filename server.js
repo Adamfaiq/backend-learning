@@ -10,12 +10,14 @@ const {
   validatePostUpdate,
   handleValidationErrors,
 } = require("./middleware/validation");
+const rateLimitMiddleware = require("./middleware/rateLimit");
 
 const app = express();
 
 // ADD THESE 2 LINES (after app = express())
 app.use(express.json()); // Parse JSON data
 app.use(express.urlencoded({ extended: true })); // Parse form data
+app.use(rateLimitMiddleware);
 
 // Hardcoded data (top of file, after middleware)
 const posts = [];
@@ -76,9 +78,51 @@ app.get("/api/posts/my/posts", auth, async (req, res) => {
 
 app.get("/api/posts", async (req, res) => {
   try {
-    const posts = await Post.find().populate("user", "username email"); // ADD THIS - populate user data
+    // Pagination
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+    const skip = (page - 1) * limit;
+
+    // Build query
+    let query = {};
+
+    // Search
+    if (req.query.search) {
+      query.$or = [
+        { title: { $regex: req.query.search, $options: "i" } },
+        { content: { $regex: req.query.search, $options: "i" } },
+      ];
+    }
+
+    // Filter by author
+    if (req.query.author) {
+      query.author = { $regex: req.query.author, $options: "i" };
+    }
+
+    // Sorting
+    let sortOption = { createdAt: -1 }; // Default: newest first
+
+    if (req.query.sortBy) {
+      const sortField = req.query.sortBy;
+      const sortOrder = req.query.order === "asc" ? 1 : -1;
+      sortOption = { [sortField]: sortOrder };
+    }
+
+    // Get total
+    const total = await Post.countDocuments(query);
+
+    // Get posts
+    const posts = await Post.find(query)
+      .populate("user", "username email")
+      .skip(skip)
+      .limit(limit)
+      .sort(sortOption);
 
     res.json({
+      page: page,
+      limit: limit,
+      total: total,
+      totalPages: Math.ceil(total / limit),
       count: posts.length,
       posts: posts,
     });
