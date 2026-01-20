@@ -11,6 +11,10 @@ const {
   handleValidationErrors,
 } = require("./middleware/validation");
 const rateLimitMiddleware = require("./middleware/rateLimit");
+const asyncHandler = require("./middleware/asyncHandler");
+const { errorHandler } = require("./middleware/errorHandler");
+const { AppError } = require("./middleware/errorHandler");
+const logger = require("./logger");
 
 const app = express();
 
@@ -24,94 +28,65 @@ const posts = [];
 
 app.use("/api/auth", authRoutes);
 
-// GET all posts
+// POST - Create
 app.post(
   "/api/posts",
   auth,
   validatePost,
   handleValidationErrors,
-  async (req, res) => {
-    console.log("POST route hit!"); // LOG 1
-    console.log("Body:", req.body); // LOG 2
-    try {
-      const { title, author, content } = req.body;
-      console.log("Creating post..."); // LOG 3
-
-      // No need for manual validation anymore!
-      // Middleware already checked
-
-      const newPost = await Post.create({
-        title,
-        author,
-        content,
-        user: req.userId,
-      });
-      console.log("Post created:", newPost); // LOG 4
-
-      res.status(201).json({
-        message: "Post created successfully",
-        post: newPost,
-      });
-    } catch (error) {
-      res.status(500).json({ error: "Server error", details: error.message });
-      console.log("Error:", error); // LOG 5
-    }
-  }
+  asyncHandler(async (req, res) => {
+    const { title, author, content } = req.body;
+    const newPost = await Post.create({
+      title,
+      author,
+      content,
+      user: req.userId,
+    });
+    res
+      .status(201)
+      .json({ success: true, message: "Post created", post: newPost });
+  }),
 );
 
-// GET all posts
-// Get logged-in user's posts only
-app.get("/api/posts/my/posts", auth, async (req, res) => {
-  try {
+// GET - User's posts
+app.get(
+  "/api/posts/my/posts",
+  auth,
+  asyncHandler(async (req, res) => {
     const posts = await Post.find({ user: req.userId })
       .populate("user", "username email")
       .sort({ createdAt: -1 });
+    res.json({ success: true, count: posts.length, posts });
+  }),
+);
 
-    res.json({
-      count: posts.length,
-      posts: posts,
-    });
-  } catch (error) {
-    res.status(500).json({ error: "Server error", details: error.message });
-  }
-});
-
-app.get("/api/posts", async (req, res) => {
-  try {
-    // Pagination
+// GET - All posts (pagination)
+app.get(
+  "/api/posts",
+  asyncHandler(async (req, res) => {
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 10;
     const skip = (page - 1) * limit;
 
-    // Build query
     let query = {};
-
-    // Search
     if (req.query.search) {
       query.$or = [
         { title: { $regex: req.query.search, $options: "i" } },
         { content: { $regex: req.query.search, $options: "i" } },
       ];
     }
-
-    // Filter by author
     if (req.query.author) {
       query.author = { $regex: req.query.author, $options: "i" };
     }
 
-    // Sorting
-    let sortOption = { createdAt: -1 }; // Default: newest first
-
+    let sortOption = { createdAt: -1 };
     if (req.query.sortBy) {
       const sortField = req.query.sortBy;
       const sortOrder = req.query.order === "asc" ? 1 : -1;
       sortOption = { [sortField]: sortOrder };
     }
 
-    // Get total
     const total = await Post.countDocuments(query);
-
-    // Get posts
     const posts = await Post.find(query)
       .populate("user", "username email")
       .skip(skip)
@@ -119,209 +94,88 @@ app.get("/api/posts", async (req, res) => {
       .sort(sortOption);
 
     res.json({
-      page: page,
-      limit: limit,
-      total: total,
+      success: true,
+      page,
+      limit,
+      total,
       totalPages: Math.ceil(total / limit),
       count: posts.length,
-      posts: posts,
+      posts,
     });
-  } catch (error) {
-    res.status(500).json({ error: "Server error", details: error.message });
-  }
-});
+  }),
+);
 
-// Single Post - Id
-app.get("/api/posts/:id", async (req, res) => {
-  try {
+// GET - Single post
+app.get(
+  "/api/posts/:id",
+  asyncHandler(async (req, res) => {
     const post = await Post.findById(req.params.id).populate(
       "user",
-      "username email"
-    ); // ADD THIS
+      "username email",
+    );
+    if (!post) throw new AppError("Post not found", 404);
+    res.json({ success: true, post });
+  }),
+);
 
-    if (!post) {
-      return res.status(404).json({ error: "Post not found" });
-    }
-
-    res.json(post);
-  } catch (error) {
-    res.status(500).json({ error: "Server error", details: error.message });
-  }
-});
-
-// Update Post
+// PUT - Update
 app.put(
   "/api/posts/:id",
   auth,
   validatePostUpdate,
   handleValidationErrors,
-  async (req, res) => {
-    try {
-      const { title, author, content } = req.body;
-
-      // Find post
-      const post = await Post.findById(req.params.id);
-
-      if (!post) {
-        return res.status(404).json({ error: "Post not found" });
-      }
-
-      // Check ownership - IMPORTANT!
-      if (post.user.toString() !== req.userId) {
-        return res.status(403).json({
-          error: "Forbidden: You can only edit your own posts",
-        });
-      }
-
-      // Build update object
-      const updateData = {};
-      if (title) updateData.title = title;
-      if (author) updateData.author = author;
-      if (content) updateData.content = content;
-
-      const updatedPost = await Post.findByIdAndUpdate(
-        req.params.id,
-        updateData,
-        { new: true, runValidators: true } // ADD runValidators!
-      );
-
-      if (!updatedPost) {
-        return res.status(404).json({ error: "Post not found" });
-      }
-
-      res.json({ message: "Post updated successfully", post: updatedPost });
-    } catch (error) {
-      res.status(500).json({ error: "Server error", details: error.message });
-    }
-  }
-);
-
-// Delete
-app.delete("/api/posts/:id", auth, async (req, res) => {
-  try {
-    // Find post
+  asyncHandler(async (req, res) => {
+    const { title, author, content } = req.body;
     const post = await Post.findById(req.params.id);
 
-    if (!post) {
-      return res.status(404).json({ error: "Post not found" });
-    }
-
-    // Check ownership
+    if (!post) throw new AppError("Post not found", 404);
     if (post.user.toString() !== req.userId) {
-      return res.status(403).json({
-        error: "Forbidden: You can only delete your own posts",
-      });
-    }
-    const deletedPost = await Post.findByIdAndDelete(req.params.id);
-
-    if (!deletedPost) {
-      return res.status(404).json({ error: "Post not found" });
+      throw new AppError("Forbidden: You can only edit your own posts", 403);
     }
 
-    res.json({
-      message: "Post deleted successfully",
-      deletedPost: deletedPost,
-    });
-  } catch (error) {
-    res.status(500).json({ error: "Server error", details: error.message });
-  }
-});
+    const updateData = {};
+    if (title) updateData.title = title;
+    if (author) updateData.author = author;
+    if (content) updateData.content = content;
 
-// CREATE New Post ( Post Request)
-app.post("/api/posts", async (req, res) => {
-  try {
-    const { title, author, content } = req.body;
+    const updatedPost = await Post.findByIdAndUpdate(
+      req.params.id,
+      updateData,
+      { new: true, runValidators: true },
+    );
 
-    // Validation
-    if (!title || !author || !content) {
-      return res.status(400).json({
-        error: "Missing required fields",
-        required: ["title", "author", "content"],
-      });
+    res.json({ success: true, message: "Post updated", post: updatedPost });
+  }),
+);
+
+// DELETE
+app.delete(
+  "/api/posts/:id",
+  auth,
+  asyncHandler(async (req, res) => {
+    const post = await Post.findById(req.params.id);
+
+    if (!post) throw new AppError("Post not found", 404);
+    if (post.user.toString() !== req.userId) {
+      throw new AppError("Forbidden: You can only delete your own posts", 403);
     }
 
-    // Create new post in database
-    const newPost = await Post.create({
-      title,
-      author,
-      content,
-    });
+    await Post.findByIdAndDelete(req.params.id);
+    res.json({ success: true, message: "Post deleted" });
+  }),
+);
 
-    res.status(201).json({
-      message: "Post created successfully",
-      post: newPost,
-    });
-  } catch (error) {
-    res.status(500).json({ error: "Server error", details: error.message });
-  }
-});
+// Error middleware - LAST!
+app.use(errorHandler);
 
-// Update Post
-app.put("/api/posts/:id", (req, res) => {
-  const postId = req.params.id;
-  const { title, author, content } = req.body;
-
-  // Find post index in array
-  const postIndex = posts.findIndex((p) => p.id == postId);
-
-  // If post not found
-  if (postIndex === -1) {
-    return res.status(404).json({
-      error: "Post not found",
-    });
-  }
-
-  // Validation - at least one field required
-  if (!title && !author && !content) {
-    return res.status(400).json({
-      error: "At least one field required to update",
-    });
-  }
-
-  // Update fields (only if provided)
-  if (title) posts[postIndex].title = title;
-  if (author) posts[postIndex].author = author;
-  if (content) posts[postIndex].content = content;
-
-  // Return updated post
-  res.json({
-    message: "Post updated successfully",
-    post: posts[postIndex],
-  });
-});
-
-// Delete
-app.delete("/api/posts/:id", (req, res) => {
-  const postId = req.params.id;
-
-  // Find post index
-  const postIndex = posts.findIndex((p) => p.id == postId);
-
-  // If post not found
-  if (postIndex === -1) {
-    return res.status(404).json({
-      error: "Post not found",
-    });
-  }
-
-  // Remove post from array
-  const deletedPost = posts.splice(postIndex, 1);
-
-  // Return success
-  res.json({
-    message: "Post deleted successfully",
-    deletedPost: deletedPost[0],
-  });
-});
+// Error handling middleware - MESTI LAST!
+app.use(errorHandler);
 
 connectDB().then(() => {
   app.listen(process.env.PORT || 3000, () => {
+    logger.info(`Server running on port ${process.env.PORT || 3000}`); // ADD
     console.log(
-      `Server running on http://localhost:${process.env.PORT || 3000}`
+      `Server running on http://localhost:${process.env.PORT || 3000}`,
     );
   });
 });
-
-// app.listen(3000, () => {
-//   console.log("server running on http://localhost:3000");
-// });
