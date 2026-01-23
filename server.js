@@ -21,7 +21,6 @@ const app = express();
 // ADD THESE 2 LINES (after app = express())
 app.use(express.json()); // Parse JSON data
 app.use(express.urlencoded({ extended: true })); // Parse form data
-app.use(rateLimitMiddleware);
 
 // Hardcoded data (top of file, after middleware)
 const posts = [];
@@ -168,14 +167,18 @@ app.delete(
 // Error middleware - LAST!
 app.use(errorHandler);
 
-// Error handling middleware - MESTI LAST!
-app.use(errorHandler);
-
-connectDB().then(() => {
-  app.listen(process.env.PORT || 3000, () => {
-    logger.info(`Server running on port ${process.env.PORT || 3000}`); // ADD
-    console.log(
-      `Server running on http://localhost:${process.env.PORT || 3000}`,
-    );
+// Only listen if not in test mode
+if (process.env.NODE_ENV !== "test") {
+  connectDB().then(() => {
+    app.listen(process.env.PORT || 3000, () => {
+      logger.info(`Server running on port ${process.env.PORT || 3000}`);
+      console.log(
+        `Server running on http://localhost:${process.env.PORT || 3000}`,
+      );
+    });
   });
-});
+}
+
+module.exports = app;
+
+module.exports = app; // Export for testing

@@ -48,7 +48,7 @@ const validatePostUpdate = [
   body().custom((value, { req }) => {
     if (!req.body.title && !req.body.author && !req.body.content) {
       throw new Error(
-        "At least one field (title, author, or content) must be provided"
+        "At least one field (title, author, or content) must be provided",
       );
     }
     return true;
@@ -57,14 +57,11 @@ const validatePostUpdate = [
 
 // Middleware to check validation results
 const handleValidationErrors = (req, res, next) => {
-  console.log("Validation middleware running..."); // LOG 1
-
   const errors = validationResult(req);
-  console.log("Validation errors:", errors.array()); // LOG 2
 
   if (!errors.isEmpty()) {
-    console.log("Validation failed!"); // LOG 3
     return res.status(400).json({
+      success: false, // ADD THIS
       error: "Validation failed",
       details: errors.array().map((err) => ({
         field: err.path,
@@ -72,8 +69,6 @@ const handleValidationErrors = (req, res, next) => {
       })),
     });
   }
-
-  console.log("Validation passed, calling next()"); // LOG 4
   next();
 };
 
