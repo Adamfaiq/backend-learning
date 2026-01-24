@@ -1,5 +1,4 @@
-require("dotenv").config();
-
+const dotenv = require("dotenv");
 const express = require("express");
 const connectDB = require("./db");
 const Post = require("./models/Post");
@@ -15,7 +14,8 @@ const asyncHandler = require("./middleware/asyncHandler");
 const { errorHandler } = require("./middleware/errorHandler");
 const { AppError } = require("./middleware/errorHandler");
 const logger = require("./logger");
-
+const envFile = `.env.${process.env.NODE_ENV || "development"}`;
+dotenv.config({ path: envFile });
 const app = express();
 
 // ADD THESE 2 LINES (after app = express())
