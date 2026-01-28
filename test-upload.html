@@ -1,0 +1,22 @@
+<!doctype html>
+<html>
+  <body>
+    <h2>Test Upload</h2>
+    <form
+      action="http://localhost:3000/api/posts/upload"
+      method="POST"
+      enctype="multipart/form-data"
+    >
+      <input
+        type="text"
+        name="token"
+        placeholder="Paste your JWT token here"
+        style="width: 400px"
+      />
+      <br /><br />
+      <input type="file" name="image" />
+      <br /><br />
+      <button type="submit">Upload</button>
+    </form>
+  </body>
+</html>

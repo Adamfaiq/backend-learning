@@ -1,5 +1,6 @@
 const dotenv = require("dotenv");
 const express = require("express");
+const cors = require("cors");
 const connectDB = require("./db");
 const Post = require("./models/Post");
 const authRoutes = require("./routes/auth");
@@ -16,7 +17,17 @@ const { AppError } = require("./middleware/errorHandler");
 const logger = require("./logger");
 const envFile = `.env.${process.env.NODE_ENV || "development"}`;
 dotenv.config({ path: envFile });
+const postsRoutes = require("./routes/posts");
 const app = express();
+
+app.use(
+  cors({
+    origin: "http://lcoalhost:5173",
+    credentials: true,
+  }),
+);
+
+app.use("/uploads", express.static("uploads"));
 
 // ADD THESE 2 LINES (after app = express())
 app.use(express.json()); // Parse JSON data
@@ -26,6 +37,8 @@ app.use(express.urlencoded({ extended: true })); // Parse form data
 const posts = [];
 
 app.use("/api/auth", authRoutes);
+
+app.use("/api/posts", postsRoutes);
 
 // POST - Create
 app.post(
