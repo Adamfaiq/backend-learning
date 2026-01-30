@@ -2,6 +2,51 @@ const express = require("express");
 const router = express.Router();
 const jwt = require("jsonwebtoken");
 const User = require("../models/User");
+const { sendEmail } = require("../utils/email");
+
+/**
+ * @swagger
+ * /api/auth/register:
+ *   post:
+ *     summary: Register a new user
+ *     tags: [Authentication]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - username
+ *               - email
+ *               - password
+ *             properties:
+ *               username:
+ *                 type: string
+ *                 example: johndoe
+ *               email:
+ *                 type: string
+ *                 example: john@example.com
+ *               password:
+ *                 type: string
+ *                 example: password123
+ *     responses:
+ *       201:
+ *         description: User registered successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                 token:
+ *                   type: string
+ *                 user:
+ *                   type: object
+ *       400:
+ *         description: User already exists
+ */
 
 // REGISTER - Create new user
 router.post("/register", async (req, res) => {
@@ -27,6 +72,14 @@ router.post("/register", async (req, res) => {
       expiresIn: "7d",
     });
 
+    // send welcome email
+    await sendEmail(
+      user.email,
+      "Welcome to Our App!",
+      `Hi ${user.username}, welcome to our platform!`,
+      `<h1>Welcome ${user.username}!</h1><p>Thanks for registering.</p>`,
+    );
+
     res.status(201).json({
       message: "User registered successfully",
       token,
@@ -40,6 +93,35 @@ router.post("/register", async (req, res) => {
     res.status(500).json({ error: "Server error", details: error.message });
   }
 });
+
+/**
+ * @swagger
+ * /api/auth/login:
+ *   post:
+ *     summary: Login user
+ *     tags: [Authentication]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - email
+ *               - password
+ *             properties:
+ *               email:
+ *                 type: string
+ *                 example: john@example.com
+ *               password:
+ *                 type: string
+ *                 example: password123
+ *     responses:
+ *       200:
+ *         description: Login successful
+ *       401:
+ *         description: Invalid credentials
+ */
 
 // LOGIN - Authenticate user
 router.post("/login", async (req, res) => {

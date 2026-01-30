@@ -1,4 +1,6 @@
 const dotenv = require("dotenv");
+const envFile = `.env.${process.env.NODE_ENV || "development"}`;
+dotenv.config({ path: envFile });
 const express = require("express");
 const cors = require("cors");
 const connectDB = require("./db");
@@ -15,17 +17,22 @@ const asyncHandler = require("./middleware/asyncHandler");
 const { errorHandler } = require("./middleware/errorHandler");
 const { AppError } = require("./middleware/errorHandler");
 const logger = require("./logger");
-const envFile = `.env.${process.env.NODE_ENV || "development"}`;
-dotenv.config({ path: envFile });
+
 const postsRoutes = require("./routes/posts");
 const app = express();
 
+// CORS
 app.use(
   cors({
     origin: "http://lcoalhost:5173",
     credentials: true,
   }),
 );
+
+const { specs, swaggerUi } = require("./swagger");
+
+// Swagger documentation
+app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(specs));
 
 app.use("/uploads", express.static("uploads"));
 
